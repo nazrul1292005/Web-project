@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Realtime Chat • Firebase (Single File)</title>
+  <style>
+    :root{
+      --bg: #0f172a;          /* slate-900 */
+      --panel: #111827;       /* gray-900 */
+      --panel-2: #0b1220;     /* deep */
+      --text: #e5e7eb;        /* gray-200 */
+      --muted: #94a3b8;       /* slate-400 */
+      --brand: #6366f1;       /* indigo-500 */
+      --brand-2: #22d3ee;     /* cyan-400 */
+      --mine: #10b981;        /* emerald-500 */
+      --theirs: #3b82f6;      /* blue-500 */
+      --danger: #ef4444;      /* red-500 */
+      --warning: #f59e0b;     /* amber-500 */
+      --ok: #22c55e;          /* green-500 */
+    }
+    @media (prefers-color-scheme: light){
+      :root{ --bg:#f8fafc; --panel:#ffffff; --panel-2:#f1f5f9; --text:#0f172a; --muted:#64748b; }
+    }
+    *{box-sizing: border-box}
+    html,body{height:100%}
+    body{
+      margin:0; background: radial-gradient(1200px 800px at 10% 0%, rgba(34,211,238,.12), transparent 60%),
+               radial-gradient(1000px 700px at 100% 0%, rgba(99,102,241,.15), transparent 55%),
+               var(--bg);
+      color:var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      display:flex; align-items:center; justify-content:center; padding:16px;
+    }
+    .card{
+      width: min(920px, 100%);
+      height: min(720px, calc(100vh - 32px));
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border: 1px solid rgba(148,163,184,.2);
+      border-radius: 20px; backdrop-filter: blur(6px);
+      box-shadow: 0 20px 60px rgba(0,0,0,.25);
+      display:grid; grid-template-rows: auto 1fr auto; overflow:hidden;
+    }
+    .header{
+      padding:14px 18px; background: linear-gradient(90deg, rgba(99,102,241,.2), rgba(34,211,238,.15));
+      border-bottom: 1px solid rgba(148,163,184,.25); display:flex; align-items:center; gap:12px;
+    }
+    .logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--brand),var(--brand-2));display:grid;place-items:center;color:white;font-weight:700}
+    .title{font-weight:700; letter-spacing:.2px}
+    .status{margin-left:auto; font-size:12px; display:flex; align-items:center; gap:8px; color:var(--muted)}
+    .badge{padding:3px 8px; border-radius:999px; border:1px solid rgba(148,163,184,.35);}
+
+    .messages{ position:relative; padding:16px; overflow:auto; background: linear-gradient(180deg, var(--panel-2), transparent 120%); }
+
+    .day-divider{ display:flex; align-items:center; gap:12px; margin:16px 0; }
+    .day-divider::before, .day-divider::after{ content:""; flex:1; height:1px; background: rgba(148,163,184,.25); }
+    .day-chip{ font-size:12px; color:var(--muted); }
+
+    .row{ display:flex; margin:10px 0; gap:8px; }
+    .row.me{ justify-content: flex-end; }
+
+    .avatar{ width:28px; height:28px; border-radius:50%; flex:0 0 auto; display:grid; place-items:center; font-size:12px; font-weight:700; color:white; background:linear-gradient(135deg, var(--theirs), #60a5fa); box-shadow: 0 4px 14px rgba(59,130,246,.25)}
+    .row.me .avatar{ background: linear-gradient(135deg, var(--mine), #34d399); }
+
+    .bubble{ max-width: 70%; position:relative; padding:10px 12px; border-radius:14px; line-height:1.35; box-shadow: 0 4px 18px rgba(0,0,0,.18);}
+    .me .bubble{ background: rgba(16,185,129,.16); border:1px solid rgba(16,185,129,.35) }
+    .them .bubble{ background: rgba(59,130,246,.14); border:1px solid rgba(59,130,246,.35) }
+
+    /* speech tails */
+    .them .bubble::after{ content:""; position:absolute; left:-6px; bottom:6px; width:10px; height:10px; background:inherit; border-left:inherit; border-bottom:inherit; transform: rotate(45deg); border-bottom-left-radius:3px }
+    .me .bubble::after{ content:""; position:absolute; right:-6px; bottom:6px; width:10px; height:10px; background:inherit; border-right:inherit; border-bottom:inherit; transform: rotate(-45deg); border-bottom-right-radius:3px }
+
+    .name{ font-size:11px; color:var(--muted); margin:0 0 4px 2px }
+    .time{ font-size:10px; color:var(--muted); margin-top:6px; text-align:right }
+
+    .composer{ display:flex; gap:10px; padding:12px; border-top:1px solid rgba(148,163,184,.2); background: linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.01)); }
+    .input{ flex:1; display:flex; align-items:center; gap:8px; background: var(--panel); border:1px solid rgba(148,163,184,.25); border-radius:12px; padding:10px 12px }
+    .input input{ flex:1; border:none; outline:none; background:transparent; color:var(--text) }
+    .setname{ display:flex; gap:8px }
+    .btn{ background: linear-gradient(135deg, var(--brand), var(--brand-2)); color:white; border:none; border-radius:10px; padding:10px 14px; cursor:pointer; font-weight:700; letter-spacing:.2px; box-shadow: 0 10px 18px rgba(99,102,241,.25); }
+    .btn:hover{ filter:brightness(1.05) }
+
+    .helper{ padding:8px 12px; font-size:12px; color:var(--muted) }
+    .error{ color: var(--danger) }
+    .ok{ color: var(--ok) }
+
+    /* Dev/test panel */
+    details.tester{ border-top:1px dashed rgba(148,163,184,.3); padding:10px 14px; font-size:12px; color:var(--muted) }
+    .test-row{ display:flex; align-items:center; gap:8px; margin:4px 0 }
+    .dot{ width:8px; height:8px; border-radius:50%; background:var(--warning) }
+    .dot.ok{ background:var(--ok) }
+    .dot.err{ background:var(--danger) }
+    code{ background: rgba(148,163,184,.12); padding:2px 6px; border-radius:6px }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <header class="header">
+      <div class="logo">💬</div>
+      <div class="title">Realtime Chat</div>
+      <div class="status">
+        <span id="connDot" class="dot"></span>
+        <span id="connText">Connecting…</span>
+        <span class="badge" id="whoami">Guest</span>
+      </div>
+    </header>
+
+    <section id="messages" class="messages" aria-live="polite"></section>
+
+    <footer class="composer">
+      <div class="setname">
+        <input id="name" placeholder="Your name" maxlength="24" />
+        <button class="btn" id="saveNameBtn" title="Set name">Set</button>
+      </div>
+      <div class="input" style="flex:1">
+        <input id="message" placeholder="Type a message and press Enter" />
+      </div>
+      <button class="btn" id="sendBtn">Send</button>
+    </footer>
+
+    <details class="tester">
+      <summary>Diagnostics & tests</summary>
+      <div class="test-row"><span id="t-sdk" class="dot"></span> Firebase SDK loaded</div>
+      <div class="test-row"><span id="t-app" class="dot"></span> App initialized</div>
+      <div class="test-row"><span id="t-db" class="dot"></span> Database reference available (<code>messages</code>)</div>
+      <div class="test-row"><span id="t-placeholder" class="dot"></span> Config replaced (no placeholders)</div>
+      <div class="helper">If a test is red, open console (F12) for details. Ensure Realtime Database is enabled and <code>databaseURL</code> matches your project.</div>
+    </details>
+  </main>
+
+  <!-- Firebase SDK v8 -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+
+  <script>
+    // 🔧 1) Put your actual Firebase config here (Project Settings → General → Your apps → Config).
+    //    Replace ALL placeholder values. Realtime Database must be enabled.
+    var firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      databaseURL: "https://YOUR_PROJECT_ID.firebaseio.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT_ID.appspot.com",
+      messagingSenderId: "SENDER_ID",
+      appId: "APP_ID"
+    };
+
+    // === Safe initialization with guards to prevent 'undefined push' errors ===
+    const tests = {
+      sdk:false, app:false, db:false, placeholder:true
+    };
+
+    function mark(id, ok){
+      const el = document.getElementById(id);
+      if(!el) return; el.classList.remove('ok','err'); el.classList.add(ok? 'ok':'err');
+    }
+
+    // Test 1: SDK presence
+    tests.sdk = typeof firebase !== 'undefined' && !!firebase.initializeApp;
+    mark('t-sdk', tests.sdk);
+
+    let app, dbRef = null;
+    try{
+      if(tests.sdk){
+        // Basic placeholder detection
+        const placeholders = ['YOUR_API_KEY','YOUR_PROJECT_ID','SENDER_ID','APP_ID'];
+        tests.placeholder = !placeholders.some(p => JSON.stringify(firebaseConfig).includes(p));
+        mark('t-placeholder', tests.placeholder);
+
+        if (!firebase.apps.length) {
+          app = firebase.initializeApp(firebaseConfig);
+        } else {
+          app = firebase.app();
+        }
+        tests.app = !!app; mark('t-app', tests.app);
+
+        if (firebase.database && tests.app) {
+          dbRef = firebase.database().ref('messages');
+          tests.db = !!dbRef; mark('t-db', tests.db);
+        }
+      }
+    }catch(e){
+      console.error('Firebase init error:', e);
+    }
+
+    const connDot = document.getElementById('connDot');
+    const connText = document.getElementById('connText');
+
+    function setConn(status, text){
+      connText.textContent = text;
+      connDot.classList.remove('ok','err');
+      if(status==='ok') connDot.classList.add('ok');
+      else if(status==='err') connDot.classList.add('err');
+    }
+
+    // user name handling
+    const nameInput = document.getElementById('name');
+    const messageInput = document.getElementById('message');
+    const whoami = document.getElementById('whoami');
+    const saveNameBtn = document.getElementById('saveNameBtn');
+
+    let currentUser = localStorage.getItem('chat_name') || '';
+    if(currentUser){ nameInput.value = currentUser; whoami.textContent = currentUser; }
+
+    saveNameBtn.addEventListener('click', () => {
+      const nm = nameInput.value.trim();
+      if(!nm){ alert('Please enter your name'); return; }
+      currentUser = nm; localStorage.setItem('chat_name', currentUser); whoami.textContent = currentUser;
+    });
+
+    // send logic
+    const sendBtn = document.getElementById('sendBtn');
+    sendBtn.addEventListener('click', sendMessage);
+    messageInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); sendMessage(); }});
+
+    function sendMessage(){
+      const name = (currentUser || nameInput.value || '').trim();
+      const message = (messageInput.value || '').trim();
+
+      if(!tests.app || !dbRef){
+        alert('Firebase not ready. Check config & databaseURL.');
+        return;
+      }
+      if(!name){ alert('Set your name first.'); return; }
+      if(!message){ return; }
+
+      // payload with timestamp
+      const payload = { name, message, ts: Date.now() };
+      dbRef.push(payload).catch(err => {
+        console.error('Push failed:', err);
+        alert('Could not send. Check Realtime Database rules and databaseURL.');
+      });
+      messageInput.value = '';
+    }
+
+    // render messages
+    const messagesEl = document.getElementById('messages');
+    let lastSender = null; let lastDay = '';
+
+    function fmtTime(ts){
+      try{ const d = new Date(ts); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }catch{ return '' }
+    }
+    function dayKey(ts){ const d = new Date(ts); return d.toLocaleDateString(); }
+
+    function appendMessage(data){
+      const msg = data.val ? data.val() : data; // supports test injection
+      const side = (msg.name === (currentUser || nameInput.value)) ? 'me' : 'them';
+      const day = msg.ts ? dayKey(msg.ts) : dayKey(Date.now());
+
+      if(day !== lastDay){
+        const divider = document.createElement('div');
+        divider.className = 'day-divider';
+        divider.innerHTML = `<span class="day-chip">${day}</span>`;
+        messagesEl.appendChild(divider);
+        lastDay = day; lastSender = null; // reset grouping on new day
+      }
+
+      const row = document.createElement('div');
+      row.className = `row ${side}`;
+
+      // avatar (initials)
+      const av = document.createElement('div');
+      av.className = 'avatar';
+      av.textContent = (msg.name || '?').slice(0,2).toUpperCase();
+
+      const bubbleWrap = document.createElement('div');
+      bubbleWrap.className = side === 'me' ? 'bubble me' : 'bubble them';
+
+      // Show name only for others and only when sender changes
+      if(side === 'them' && msg.name !== lastSender){
+        const nm = document.createElement('div');
+        nm.className = 'name';
+        nm.textContent = msg.name;
+        bubbleWrap.appendChild(nm);
+      }
+
+      const text = document.createElement('div');
+      text.textContent = msg.message;
+      bubbleWrap.appendChild(text);
+
+      const time = document.createElement('div');
+      time.className = 'time';
+      time.textContent = fmtTime(msg.ts || Date.now());
+      bubbleWrap.appendChild(time);
+
+      if(side === 'them'){ row.appendChild(av); row.appendChild(bubbleWrap); }
+      else { row.appendChild(bubbleWrap); row.appendChild(av); }
+
+      messagesEl.appendChild(row);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      lastSender = msg.name;
+    }
+
+    // subscribe when dbRef is ready
+    if(dbRef){
+      setConn('ok', 'Connected');
+      dbRef.limitToLast(50).on('child_added', appendMessage, err => {
+        console.error('Listen error', err);
+        setConn('err', 'Listen error');
+      });
+    } else {
+      setConn('err', 'Not connected');
+    }
+
+    // === Extra: minimal tests (do not change user behavior) ===
+    // These act as lightweight self-tests to help you debug deployment
+    window.__chat_tests = function(){
+      return {
+        sdk_loaded: !!tests.sdk,
+        app_initialized: !!tests.app,
+        db_defined: !!tests.db,
+        placeholders_replaced: !!tests.placeholder
+      }
+    }
+  </script>
+</body>
+</html>
